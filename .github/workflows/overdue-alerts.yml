@@ -1,1 +1,26 @@
+# 未服用アラートを15分ごとに確認して送信する(Firebase の Blaze プランは不要)
+name: overdue-alerts
+
+on:
+  schedule:
+    - cron: '*/15 * * * *' # UTC。GitHub の仕様で数分〜十数分遅れることがある
+  workflow_dispatch: # 手動実行(動作確認用)
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: 依存パッケージをインストール
+        run: npm install --omit=dev
+        working-directory: alert-worker
+      - name: 未服用アラートを確認・送信
+        run: node run.js
+        working-directory: alert-worker
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
 
