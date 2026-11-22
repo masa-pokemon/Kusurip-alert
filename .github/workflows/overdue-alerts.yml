@@ -5,7 +5,12 @@ on:
   schedule:
     # 毎時0・15・30・45分は GitHub が混み合って実行が飛ばされやすいため、少しずらしている
     - cron: '4,19,34,49 * * * *'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      test_push:
+        description: 'テスト通知を全メンバーに送る(動作確認用)'
+        type: boolean
+        default: false
 
 # 実行が重ならないようにする(同じアラートの二重送信防止)
 concurrency:
@@ -29,3 +34,4 @@ jobs:
         working-directory: alert-worker
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          TEST_PUSH: ${{ inputs.test_push }}
