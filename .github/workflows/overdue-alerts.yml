@@ -3,8 +3,14 @@ name: overdue-alerts
 
 on:
   schedule:
-    - cron: '*/15 * * * *' # UTC。GitHub の仕様で数分〜十数分遅れることがある
-  workflow_dispatch: # 手動実行(動作確認用)
+    # 毎時0・15・30・45分は GitHub が混み合って実行が飛ばされやすいため、少しずらしている
+    - cron: '4,19,34,49 * * * *'
+  workflow_dispatch: {}
+
+# 実行が重ならないようにする(同じアラートの二重送信防止)
+concurrency:
+  group: overdue-alerts
+  cancel-in-progress: false
 
 jobs:
   send:
@@ -15,10 +21,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: 依存パッケージをインストール
+      - name: install
         run: npm install --omit=dev
         working-directory: alert-worker
-      - name: 未服用アラートを確認・送信
+      - name: send alerts
         run: node run.js
         working-directory: alert-worker
         env:
