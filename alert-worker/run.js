@@ -10,9 +10,10 @@ const pad = (n) => String(n).padStart(2, '0');
 const MIN = 60000;
 const DEFAULT_DELAY_MIN = 120;
 const DEFAULT_TZ_OFFSET_MIN = 540; // 日本(JST)
-// 実行間隔(15分)+ 定期実行の遅延を吸収できる幅。これより古い未記録はアラートしない。
-// 幅を狭くすると Firestore の読み取り回数も減る(無料枠: 1日5万読み取り)。
-const MAX_LATE_MS = 60 * MIN;
+// 定期実行の遅延・欠落を吸収できる幅。これより古い未記録はアラートしない。
+// GitHub Actions の定期実行は数十分あくことがあるため、2時間まで遡って拾う。
+// (送信済みは alerts に記録するので、広げても二重送信にはならない。読み取り回数は少し増える)
+const MAX_LATE_MS = 120 * MIN;
 const MAX_PER_RUN = 5; // 1グループ1回あたりの最大通知数
 
 initializeApp({
@@ -94,15 +95,19 @@ async function processGroup(db, g, now) {
   const memberRefs = (data.memberIds || []).map((uid) => db.collection('users').doc(uid));
   const memberDocs = memberRefs.length ? await db.getAll(...memberRefs) : [];
   const targets = []; // { uid, token }
+  const mutedByUid = {}; // uid -> 通知オフにした飲む人のID
   for (const u of memberDocs) {
+    mutedByUid[u.id] = (u.exists && u.data().mutedProfiles) || [];
     for (const token of (u.exists && u.data().fcmTokens) || []) targets.push({ uid: u.id, token });
   }
 
   for (const o of overdue.slice(0, MAX_PER_RUN)) {
-    if (targets.length > 0) {
+    // この飲む人の通知をオフにしているメンバーには送らない
+    const recipients = targets.filter((t) => !(mutedByUid[t.uid] || []).includes(o.med.profileId));
+    if (recipients.length > 0) {
       const who = profileNames[o.med.profileId] || '';
       const resp = await getMessaging().sendEachForMulticast({
-        tokens: targets.map((t) => t.token),
+        tokens: recipients.map((t) => t.token),
         notification: {
           title: '服薬の確認',
           body: `${who}さんの${o.med.name}(${o.time}の予定)がまだ記録されていません`,
@@ -111,9 +116,9 @@ async function processGroup(db, g, now) {
         android: { priority: 'high', notification: { channelId: 'dose_alert' } },
         apns: { payload: { aps: { sound: 'default' } } },
       });
-      await removeInvalidTokens(db, targets, resp);
+      await removeInvalidTokens(db, recipients, resp);
     }
-    // 送信済みを記録(トークンがなくても記録して、毎回の再判定を避ける)
+    // 送信済みを記録(送信先がなくても記録して、毎回の再判定を避ける)
     await g.ref.collection('alerts').doc(o.id).set({
       scheduledAt: Timestamp.fromMillis(o.schedMs),
       sentAt: FieldValue.serverTimestamp(),
