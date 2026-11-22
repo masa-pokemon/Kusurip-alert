@@ -1,0 +1,9 @@
+{
+  "name": "kusurip-alert-worker",
+  "private": true,
+  "main": "run.js",
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "firebase-admin": "^12.0.0"
+  }
+}
