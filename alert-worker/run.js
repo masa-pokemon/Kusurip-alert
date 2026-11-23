@@ -19,7 +19,10 @@ const MAX_LATE_MS = 120 * MIN;
 const MAX_PER_RUN = 5; // 1グループ1回あたりの最大通知数
 const TEST_PUSH = process.env.TEST_PUSH === 'true';
 
-const log = (g, msg) => console.log(`[${g.id}] ${msg}`);
+// 公開リポジトリでは Actions のログも誰でも読める。
+// ID は先頭4文字だけに伏せ、グループ名・お薬の名前・飲む人の名前はログに出さない。
+const short = (id) => `${String(id).slice(0, 4)}…`;
+const log = (g, msg) => console.log(`[${short(g.id)}] ${msg}`);
 
 initializeApp({
   credential: process.env.FIREBASE_SERVICE_ACCOUNT
@@ -37,7 +40,7 @@ async function main() {
       if (TEST_PUSH) await sendTest(db, g);
       else await processGroup(db, g, now);
     } catch (e) {
-      console.error(`[${g.id}] グループ処理に失敗`, e);
+      console.error(`[${short(g.id)}] グループ処理に失敗:`, e && e.code, e && e.message);
     }
   }
   console.log('完了');
@@ -54,7 +57,7 @@ async function loadTargets(db, g) {
     const d = u.exists ? u.data() : {};
     mutedByUid[u.id] = d.mutedProfiles || [];
     const tokens = d.fcmTokens || [];
-    log(g, `メンバー ${u.id}: ユーザー情報=${u.exists ? 'あり' : 'なし'} / FCMトークン=${tokens.length}件`);
+    log(g, `メンバー ${short(u.id)}: ユーザー情報=${u.exists ? 'あり' : 'なし'} / FCMトークン=${tokens.length}件${tokens.length ? `(末尾: ${tokens.map((t) => t.slice(-6)).join(', ')})` : ''}`);
     for (const token of tokens) targets.push({ uid: u.id, token });
   }
   return { targets, mutedByUid };
@@ -68,7 +71,7 @@ async function send(db, g, recipients, message) {
   });
   log(g, `送信結果: 成功 ${resp.successCount}件 / 失敗 ${resp.failureCount}件`);
   resp.responses.forEach((r, i) => {
-    if (!r.success) log(g, `  失敗(メンバー ${recipients[i].uid}): ${r.error && r.error.code} ${r.error && r.error.message}`);
+    if (!r.success) log(g, `  失敗(メンバー ${short(recipients[i].uid)}): ${r.error && r.error.code} ${r.error && r.error.message}`);
   });
   await removeInvalidTokens(db, recipients, resp);
 }
@@ -98,7 +101,7 @@ async function processGroup(db, g, now) {
 
   const medSnap = await g.ref.collection('medications').get();
   const meds = medSnap.docs.filter((d) => d.data().active !== false && !d.data().isPrn);
-  log(g, `「${data.name}」 遅延=${delayMs / MIN}分 / 有効な定時のお薬=${meds.length}件`);
+  log(g, `遅延=${delayMs / MIN}分 / 有効な定時のお薬=${meds.length}件`);
   if (meds.length === 0) return;
 
   // グループの現地日付(「現地時刻をUTCとして見た」ミリ秒で扱う)
@@ -178,7 +181,7 @@ async function processGroup(db, g, now) {
         apns: { payload: { aps: { sound: 'default' } } },
       });
     } else {
-      log(g, `${o.med.name}(${o.time}): 送信先がないため送信なし(トークン未登録、または通知オフ)`);
+      log(g, `対象1件: 送信先がないため送信なし(トークン未登録、または通知オフ)`);
     }
     // 送信済みを記録(送信先がなくても記録して、毎回の再判定を避ける)
     await g.ref.collection('alerts').doc(o.id).set({
