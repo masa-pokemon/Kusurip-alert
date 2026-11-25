@@ -1,0 +1,17 @@
+name = "kusurip-cron"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# 5分ごとに実行(UTC基準。分の位置は日本時間でも同じ)
+[triggers]
+crons = ["*/5 * * * *"]
+
+[vars]
+# 自分のリポジトリ名に書き換える(ユーザー名/リポジトリ名)
+GITHUB_REPO = "masa-pokemon/kusurip-alert"
+# デフォルトブランチ名
+GITHUB_REF = "main"
+WORKFLOW_FILE = "overdue-alerts.yml"
+
+# GITHUB_TOKEN は vars に書かず、必ず次のコマンドで Secret として登録する:
+#   npx wrangler secret put GITHUB_TOKEN
